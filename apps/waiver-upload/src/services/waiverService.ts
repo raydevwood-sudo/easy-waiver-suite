@@ -1,13 +1,4 @@
-import {
-  collection,
-  doc,
-  setDoc,
-  getDocs,
-  query,
-  orderBy,
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { pb } from '../pb';
 
 export type WaiverType = 'passenger' | 'representative';
 export type WaiverSource = 'digital' | 'upload';
@@ -21,8 +12,6 @@ export interface WaiverRecord {
   passenger: {
     firstName: string;
     lastName: string;
-    firstNameLower: string;
-    lastNameLower: string;
     town: string;
   };
   representative?: {
@@ -33,7 +22,6 @@ export interface WaiverRecord {
     email: string;
     phone: string;
   };
-  pdfStoragePath?: string;
   pdfUrl?: string;
   notes?: string;
   mediaRelease?: string;
@@ -41,12 +29,6 @@ export interface WaiverRecord {
 
 export function isWaiverValid(record: WaiverRecord): boolean {
   return !!record.expiryDate && new Date(record.expiryDate) > new Date();
-}
-
-export async function fetchAllWaivers(): Promise<WaiverRecord[]> {
-  const q = query(collection(db, 'waivers'), orderBy('submittedAt', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ waiverUId: d.id, ...d.data() } as WaiverRecord));
 }
 
 export interface UploadWaiverInput {
@@ -69,9 +51,7 @@ function generateCrockfordBase32(length: number): string {
   let result = '';
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
-  for (const byte of array) {
-    result += CROCKFORD_ALPHABET[byte % 32];
-  }
+  for (const byte of array) result += CROCKFORD_ALPHABET[byte % 32];
   return result;
 }
 
@@ -82,47 +62,60 @@ function generateWaiverId(type: WaiverType): string {
 
 export async function uploadWaiver(input: UploadWaiverInput): Promise<WaiverRecord> {
   const docId = generateWaiverId(input.waiverType);
-  const storagePath = `waivers/${docId}.pdf`;
 
-  const storageRef = ref(storage, storagePath);
-  await uploadBytes(storageRef, input.pdfFile, { contentType: 'application/pdf' });
-  const pdfUrl = await getDownloadURL(storageRef);
+  const passenger = {
+    firstName: input.passengerFirstName.trim(),
+    lastName: input.passengerLastName.trim(),
+    town: input.passengerTown,
+  };
 
-  const record: WaiverRecord = {
+  let mediaRelease: string | undefined;
+  if (input.photoPermission !== undefined) {
+    mediaRelease = input.photoPermission
+      ? `I consent to Cycling Without Age Society using recordings of ${input.passengerFirstName} participating in their program for the purposes listed above.`
+      : `I do not consent. Do not use ${input.passengerFirstName}'s likeness in any manner.`;
+  }
+
+  const representative =
+    input.waiverType === 'representative' &&
+    input.representativeFirstName &&
+    input.representativeLastName
+      ? { firstName: input.representativeFirstName, lastName: input.representativeLastName }
+      : undefined;
+
+  const data = new FormData();
+  data.append('waiverId', docId);
+  data.append('waiverType', input.waiverType);
+  data.append('source', 'upload');
+  data.append('expiryDate', input.expiryDate);
+  data.append('passengerFirstName', passenger.firstName);
+  data.append('passengerLastName', passenger.lastName);
+  data.append('passengerFirstNameLower', passenger.firstName.toLowerCase());
+  data.append('passengerLastNameLower', passenger.lastName.toLowerCase());
+  data.append('passengerTown', input.passengerTown);
+  if (representative) {
+    data.append('representativeFirstName', representative.firstName);
+    data.append('representativeLastName', representative.lastName);
+  }
+  if (input.notes) data.append('notes', input.notes);
+  if (mediaRelease) data.append('mediaRelease', mediaRelease);
+  data.append('pdf', input.pdfFile);
+
+  const record = await pb.collection('waivers').create(data);
+  const pdfField = record['pdf'] as string | undefined;
+  const pdfUrl = pdfField ? pb.files.getURL(record, pdfField) : undefined;
+
+  return {
     waiverUId: docId,
     waiverType: input.waiverType,
     source: 'upload',
     submittedAt: input.submittedAt,
     expiryDate: input.expiryDate,
-    passenger: {
-      firstName:      input.passengerFirstName.trim(),
-      lastName:       input.passengerLastName.trim(),
-      firstNameLower: input.passengerFirstName.trim().toLowerCase(),
-      lastNameLower:  input.passengerLastName.trim().toLowerCase(),
-      town:           input.passengerTown,
-    },
-
-    pdfStoragePath: storagePath,
+    passenger,
+    representative,
     pdfUrl,
-    ...(input.notes ? { notes: input.notes } : {}),
-    ...(input.photoPermission !== undefined ? {
-      mediaRelease: input.photoPermission
-        ? `I consent to Cycling Without Age Society using recordings of ${input.passengerFirstName} participating in their program for the purposes listed above.`
-        : `I do not consent. Do not use ${input.passengerFirstName}'s likeness in any manner.`,
-    } : {}),
+    notes: input.notes,
+    mediaRelease,
   };
-
-  if (
-    input.waiverType === 'representative' &&
-    input.representativeFirstName &&
-    input.representativeLastName
-  ) {
-    record.representative = {
-      firstName: input.representativeFirstName,
-      lastName: input.representativeLastName,
-    };
-  }
-
-  await setDoc(doc(collection(db, 'waivers'), docId), record);
-  return record;
 }
+

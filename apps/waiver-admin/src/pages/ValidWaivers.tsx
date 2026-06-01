@@ -40,9 +40,9 @@ export default function ValidWaivers() {
   const [deleting, setDeleting] = useState(false);
 
   const getUserInitials = () => {
-    const name = currentUser?.displayName || '';
+    const name = (currentUser?.['name'] as string | undefined) || '';
     if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
-    return (currentUser?.email || '').slice(0, 2).toUpperCase();
+    return ((currentUser?.['email'] as string | undefined) || '').slice(0, 2).toUpperCase();
   };
 
   const handleSort = (col: SortCol) => {
@@ -116,11 +116,7 @@ export default function ValidWaivers() {
               className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-white font-semibold text-sm hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 overflow-hidden"
               aria-label="User menu"
             >
-              {currentUser?.photoURL ? (
-                <img src={currentUser.photoURL} alt="User avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span>{getUserInitials()}</span>
-              )}
+              <span>{getUserInitials()}</span>
             </button>
             {isUserMenuOpen && (
               <>
@@ -129,17 +125,13 @@ export default function ValidWaivers() {
                   <div className="px-4 py-3 border-b border-gray-200">
                     <div className="flex items-center gap-3">
                       <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-semibold overflow-hidden">
-                        {currentUser?.photoURL ? (
-                          <img src={currentUser.photoURL} alt="User avatar" className="w-full h-full object-cover" />
-                        ) : (
                           <span>{getUserInitials()}</span>
-                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">
-                          {currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User'}
+                          {(currentUser?.['name'] as string | undefined) || (currentUser?.['email'] as string | undefined)?.split('@')[0] || 'User'}
                         </p>
-                        <p className="text-xs text-gray-500 truncate">{currentUser?.email}</p>
+                        <p className="text-xs text-gray-500 truncate">{currentUser?.['email'] as string | undefined}</p>
                       </div>
                     </div>
                   </div>

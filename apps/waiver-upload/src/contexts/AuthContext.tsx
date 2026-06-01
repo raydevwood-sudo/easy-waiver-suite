@@ -1,19 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from 'firebase/auth';
-import {
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-} from 'firebase/auth';
-import { auth } from '../firebase';
-import { orgConfig } from '@waiver-suite/config';
+import type { RecordModel } from 'pocketbase';
+import { pb } from '../pb';
 
 interface AuthContextType {
-  currentUser: User | null;
+  currentUser: RecordModel | null;
   loading: boolean;
   authError: string | null;
-  signInWithGoogle: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -26,40 +19,34 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<RecordModel | null>(
+    pb.authStore.isValid ? (pb.authStore.record as RecordModel) : null,
+  );
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  async function signInWithGoogle() {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      hd: orgConfig.staffEmailDomain,
-      prompt: 'select_account',
-    });
+  async function signIn(email: string, password: string) {
     setAuthError(null);
-    const result = await signInWithPopup(auth, provider);
-    if (!result.user.email?.endsWith(`@${orgConfig.staffEmailDomain}`)) {
-      await firebaseSignOut(auth);
-      const msg = `${result.user.email} is not authorised. Please use your @${orgConfig.staffEmailDomain} account.`;
-      setAuthError(msg);
-      throw new Error(msg);
-    }
+    await pb.collection('users').authWithPassword(email, password);
   }
 
   async function signOut() {
-    await firebaseSignOut(auth);
+    pb.authStore.clear();
   }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    const unsubscribe = pb.authStore.onChange(() => {
+      setCurrentUser(
+        pb.authStore.isValid ? (pb.authStore.record as RecordModel) : null,
+      );
       setLoading(false);
     });
-    return unsubscribe;
+    setLoading(false);
+    return () => unsubscribe();
   }, []);
 
   return (
-    <AuthContext.Provider value={{ currentUser, loading, authError, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ currentUser, loading, authError, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

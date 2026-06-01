@@ -1,5 +1,5 @@
 {
-  "name": "@waiver-suite/pilot-waiver",
+  "name": "@easy-waiver/pilot-waiver",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,9 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@waiver-suite/config": "*",
-    "@waiver-suite/shared": "*",
-    "firebase": "^12.10.0",
+    "@easy-waiver/config": "workspace:*",
+    "@easy-waiver/shared": "workspace:*",
+    "pocketbase": "^0.25.2",
     "jspdf": "^2.5.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

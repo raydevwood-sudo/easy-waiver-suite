@@ -8,14 +8,17 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:waiver-form": "npm run dev --workspace=apps/waiver-form",
+    "dev:waiver": "npm run dev --workspace=apps/waiver",
     "dev:waiver-upload": "npm run dev --workspace=apps/waiver-upload",
     "dev:pilot-waiver": "npm run dev --workspace=apps/pilot-waiver",
     "dev:waiver-admin": "npm run dev --workspace=apps/waiver-admin",
     "build:all": "npm run build --workspaces --if-present",
-    "build:waiver-form": "npm run build --workspace=apps/waiver-form",
+    "build:waiver": "npm run build --workspace=apps/waiver",
     "build:waiver-upload": "npm run build --workspace=apps/waiver-upload",
     "build:pilot-waiver": "npm run build --workspace=apps/pilot-waiver",
     "build:waiver-admin": "npm run build --workspace=apps/waiver-admin"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

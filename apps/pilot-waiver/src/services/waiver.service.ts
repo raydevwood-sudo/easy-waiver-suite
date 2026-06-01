@@ -1,10 +1,8 @@
-import { orgConfig } from '@waiver-suite/config';
+import { orgConfig } from '@easy-waiver/config';
 import type { WaiverSubmission } from '../types';
 import type { LocalFormData } from '../components/form/pages/types';
 import { generateWaiverPDF } from './pdf-generator.service';
-import { getToken } from 'firebase/app-check';
-import { getIdToken } from 'firebase/auth';
-import { appCheck, auth } from '../firebase';
+import { pb } from '../pb';
 
 const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
@@ -16,15 +14,6 @@ function generateCrockfordBase32(length: number): string {
   return result;
 }
 
-export function generateRecordId(): string {
-  return `VOL-REC-${generateCrockfordBase32(10)}`;
-}
-
-export function generateDocumentId(): string {
-  return `VOL-DOC-${generateCrockfordBase32(10)}`;
-}
-
-/** @deprecated Use generateRecordId() for new submissions */
 export function generateWaiverId(): string {
   return `PIL-${generateCrockfordBase32(10)}`;
 }
@@ -65,59 +54,37 @@ export function convertFormDataToSubmission(
 }
 
 export async function submitWaiver(formData: LocalFormData): Promise<{ docId: string; submission: WaiverSubmission }> {
-  const recordId = generateRecordId();
-  const documentId = generateDocumentId();
+  const docId = generateWaiverId();
   const now = new Date();
   const submittedAt = now.toISOString();
   const expiry = new Date(now);
-  expiry.setFullYear(expiry.getFullYear() + 1);
+  expiry.setFullYear(expiry.getFullYear() + Math.round(orgConfig.waiverValidityDays / 365));
   const expiryDate = expiry.toISOString();
 
-  const submission = convertFormDataToSubmission(formData, recordId, submittedAt, expiryDate);
+  const submission = convertFormDataToSubmission(formData, docId, submittedAt, expiryDate);
+
   const pdf = await generateWaiverPDF(submission);
-  const pdfBase64 = pdf.output('datauristring').split(',')[1];
+  const pdfBlob = pdf.output('blob');
+  const pdfFile = new File([pdfBlob], `${docId}.pdf`, { type: 'application/pdf' });
 
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string;
-  const region = import.meta.env.VITE_FUNCTIONS_REGION ?? 'northamerica-northeast1';
-  const endpoint = `https://${region}-${projectId}.cloudfunctions.net/submitVolunteerRecord`;
+  const data = new FormData();
+  data.append('waiverId', docId);
+  data.append('waiverType', 'pilot');
+  data.append('source', 'digital');
+  data.append('submittedAt', submittedAt);
+  data.append('expiryDate', expiryDate);
+  data.append('pilotFirstName', formData.firstName);
+  data.append('pilotLastName', formData.lastName);
+  data.append('pilotTown', formData.town);
+  data.append('email', formData.email);
+  data.append('phone', formData.phone);
+  data.append('agreements', JSON.stringify(submission.agreements));
+  data.append('signatures', JSON.stringify(submission.signatures));
+  if (formData.mediaRelease) data.append('mediaRelease', formData.mediaRelease);
+  data.append('pdf', pdfFile);
 
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error('You must be signed in to submit a waiver.');
-  const idToken = await getIdToken(currentUser);
+  const record = await pb.collection('volunteer_waivers').create(data);
+  submission.pdfUrl = pb.files.getURL(record, record['pdf'] as string);
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${idToken}`,
-  };
-  if (appCheck) {
-    const tokenResult = await getToken(appCheck, false);
-    headers['X-Firebase-AppCheck'] = tokenResult.token;
-  }
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      recordId,
-      documentId,
-      recordTypeId: orgConfig.volunteerWaiverRecordTypeId,
-      recordFields: {
-        title: 'Volunteer Liability Waiver',
-        shortCode: 'WAIV',
-        description: 'Annual volunteer liability waiver',
-      },
-      pdfBase64,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(errorData.error || `Server error: ${response.status}`);
-  }
-
-  const result = await response.json() as { downloadUrl?: string; storagePath?: string };
-  submission.pdfUrl = result.downloadUrl;
-  submission.pdfStoragePath = result.storagePath;
-
-  return { docId: recordId, submission };
+  return { docId, submission };
 }

@@ -1,21 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User } from 'firebase/auth';
-import {
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-} from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { orgConfig } from '@waiver-suite/config';
+import type { RecordModel } from 'pocketbase';
+import { pb } from '../pb';
 
 interface AuthContextType {
-  currentUser: User | null;
+  currentUser: RecordModel | null;
   isAdmin: boolean;
   loading: boolean;
   authError: string | null;
-  signInWithGoogle: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -28,51 +20,36 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUser, setCurrentUser] = useState<RecordModel | null>(
+    pb.authStore.isValid ? (pb.authStore.record as RecordModel) : null,
+  );
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  async function signInWithGoogle() {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      hd: orgConfig.staffEmailDomain,
-      prompt: 'select_account',
-    });
+  const isAdmin = !!currentUser;
+
+  async function signIn(email: string, password: string) {
     setAuthError(null);
-    const result = await signInWithPopup(auth, provider);
-    if (!result.user.email?.endsWith(`@${orgConfig.staffEmailDomain}`)) {
-      await firebaseSignOut(auth);
-      const msg = `${result.user.email} is not authorised. Please use your @${orgConfig.staffEmailDomain} account.`;
-      setAuthError(msg);
-      throw new Error(msg);
-    }
+    await pb.collection('users').authWithPassword(email, password);
   }
 
   async function signOut() {
-    await firebaseSignOut(auth);
+    pb.authStore.clear();
   }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        try {
-          const snap = await getDoc(doc(db, orgConfig.volunteersCollection, user.uid));
-          setIsAdmin(snap.exists() ? !!(snap.data()?.roles?.isAdmin) : false);
-        } catch {
-          setIsAdmin(false);
-        }
-      } else {
-        setIsAdmin(false);
-      }
+    const unsubscribe = pb.authStore.onChange(() => {
+      setCurrentUser(
+        pb.authStore.isValid ? (pb.authStore.record as RecordModel) : null,
+      );
       setLoading(false);
     });
-    return unsubscribe;
+    setLoading(false);
+    return () => unsubscribe();
   }, []);
 
   return (
-    <AuthContext.Provider value={{ currentUser, isAdmin, loading, authError, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ currentUser, isAdmin, loading, authError, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { orgConfig } from '@waiver-suite/config';
+import { orgConfig } from '@easy-waiver/config';
 interface LayoutProps {
   children: React.ReactNode;
 }

@@ -1,0 +1,36 @@
+# Override compose for local development
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"  # expose locally for DB clients / Drizzle Studio
+
+  minio:
+    ports:
+      - "9000:9000"  # MinIO API
+      - "9001:9001"  # MinIO console (http://localhost:9001)
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ./apps/api
+      target: deps  # use dev stage with tsx watch
+    command: ["npx", "tsx", "watch", "src/index.ts"]
+    volumes:
+      - ./apps/api/src:/app/src:ro  # live reload
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    ports:
+      - "3000:3000"
+
+  # Traefik not needed locally — hit the API directly on :3000
+  traefik:
+    profiles: ["prod"]  # disabled in dev
+
+  migrate:
+    profiles: ["migrate"]  # run manually: docker compose --profile migrate up migrate

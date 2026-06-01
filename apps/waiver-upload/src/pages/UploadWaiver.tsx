@@ -134,7 +134,7 @@ export default function UploadWaiver() {
             <p className="text-gray-500 text-sm mb-1">
               Saved as <span className="font-mono text-gray-700">{lastUploadedId}</span>
             </p>
-            <p className="text-gray-400 text-sm mb-8">The PDF is now stored in Firebase and the record is live in Firestore.</p>
+            <p className="text-gray-400 text-sm mb-8">The waiver is now saved in PocketBase.</p>
             <button
               onClick={resetForm}
               className="w-full py-3 bg-brand-500 text-white rounded-xl font-medium hover:bg-brand-600 transition-colors"

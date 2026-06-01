@@ -7,7 +7,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          firebase: ['firebase/app', 'firebase/firestore'],
+          pocketbase: ['pocketbase'],
           pdf: ['jspdf'],
         },
       },

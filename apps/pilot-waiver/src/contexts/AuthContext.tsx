@@ -1,29 +1,22 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { User as FirebaseUser } from 'firebase/auth';
-import {
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-} from 'firebase/auth';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { orgConfig } from '@waiver-suite/config';
+import type { RecordModel } from 'pocketbase';
+import { pb } from '../pb';
+import { orgConfig } from '@easy-waiver/config';
 
 const ALLOWED_DOMAIN = orgConfig.staffEmailDomain;
 
 export interface VolunteerProfile {
-  uid: string;
+  id: string;
   email: string;
   displayName: string;
   phone?: string;
 }
 
 interface AuthContextType {
-  currentUser: FirebaseUser | null;
+  currentUser: RecordModel | null;
   volunteerProfile: VolunteerProfile | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -35,93 +28,44 @@ export function useAuth() {
   return context;
 }
 
-async function fetchVolunteerProfile(firebaseUser: FirebaseUser): Promise<VolunteerProfile | null> {
-  // Try UID-keyed doc first
-  const uidDoc = await getDoc(doc(db, 'volunteers', firebaseUser.uid));
-  if (uidDoc.exists()) {
-    const d = uidDoc.data();
-    return {
-      uid: firebaseUser.uid,
-      email: (d.email as string) || firebaseUser.email || '',
-      displayName: (d.displayName as string) || firebaseUser.displayName || '',
-      phone: (d.phone as string | undefined) ?? undefined,
-    };
-  }
-  // Fall back to email query (pending_ docs)
-  if (firebaseUser.email) {
-    const snap = await getDocs(
-      query(collection(db, 'volunteers'), where('email', '==', firebaseUser.email))
-    );
-    if (!snap.empty) {
-      const d = snap.docs[0].data();
-      return {
-        uid: firebaseUser.uid,
-        email: (d.email as string) || firebaseUser.email,
-        displayName: (d.displayName as string) || firebaseUser.displayName || '',
-        phone: (d.phone as string | undefined) ?? undefined,
-      };
-    }
-  }
-  // Signed-in but not yet a volunteer record — return basic auth info
-  return {
-    uid: firebaseUser.uid,
-    email: firebaseUser.email || '',
-    displayName: firebaseUser.displayName || '',
-    phone: undefined,
-  };
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [volunteerProfile, setVolunteerProfile] = useState<VolunteerProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<RecordModel | null>(
+    pb.authStore.isValid ? pb.authStore.record : null,
+  );
   const [loading, setLoading] = useState(true);
 
-  async function signInWithGoogle() {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      hd: ALLOWED_DOMAIN,
-      prompt: 'select_account',
-    });
-    const result = await signInWithPopup(auth, provider);
-    const email = result.user.email ?? '';
-    if (!email.endsWith(`@${ALLOWED_DOMAIN}`)) {
-      await firebaseSignOut(auth);
+  const volunteerProfile: VolunteerProfile | null = currentUser
+    ? {
+        id: currentUser.id,
+        email: (currentUser['email'] as string) || '',
+        displayName: (currentUser['name'] as string) || (currentUser['email'] as string) || '',
+        phone: (currentUser['phone'] as string | undefined) ?? undefined,
+      }
+    : null;
+
+  async function signIn(email: string, password: string) {
+    if (ALLOWED_DOMAIN && !email.endsWith(`@${ALLOWED_DOMAIN}`)) {
       throw new Error(`Sign-in is restricted to @${ALLOWED_DOMAIN} accounts.`);
     }
-    const profile = await fetchVolunteerProfile(result.user);
-    setVolunteerProfile(profile);
+    await pb.collection('users').authWithPassword(email, password);
+    setCurrentUser(pb.authStore.record);
   }
 
   async function signOut() {
-    await firebaseSignOut(auth);
-    setVolunteerProfile(null);
+    pb.authStore.clear();
+    setCurrentUser(null);
   }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && !user.email?.endsWith(`@${ALLOWED_DOMAIN}`)) {
-        void firebaseSignOut(auth);
-        setCurrentUser(null);
-        setVolunteerProfile(null);
-        setLoading(false);
-        return;
-      }
-      setCurrentUser(user);
-      if (user) {
-        fetchVolunteerProfile(user)
-          .then(setVolunteerProfile)
-          .catch(console.error)
-          .finally(() => setLoading(false));
-      } else {
-        setVolunteerProfile(null);
-        setLoading(false);
-      }
+    const unsub = pb.authStore.onChange(() => {
+      setCurrentUser(pb.authStore.isValid ? pb.authStore.record : null);
     });
-    return unsubscribe;
+    setLoading(false);
+    return () => { unsub(); };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ currentUser, volunteerProfile, loading, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ currentUser, volunteerProfile, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

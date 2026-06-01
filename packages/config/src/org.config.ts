@@ -3,8 +3,7 @@
  *
  * To deploy this waiver suite for a new organisation:
  *   1. Copy this file and fill in your values.
- *   2. Update the Google Workspace domain, Firebase project, and branding.
- *   3. The Cloud Function names must match what you deploy in your Firebase project.
+ *   2. Set VITE_POCKETBASE_URL in each app's .env to your PocketBase instance.
  */
 
 export interface OrgConfig {
@@ -15,46 +14,11 @@ export interface OrgConfig {
   orgShortName: string;
 
   /**
-   * Google Workspace domain for staff authentication.
-   * Only accounts ending with this domain are allowed to log in to
-   * the upload, admin, and pilot-waiver apps.
+   * Staff email domain restriction for the admin/upload/pilot-waiver apps.
+   * Leave empty ('') to allow any PocketBase user to sign in.
    * Example: 'myorganisation.org'
    */
   staffEmailDomain: string;
-
-  /**
-   * Firestore database ID.
-   * Use '(default)' unless you have a named database.
-   */
-  firestoreDatabase: string;
-
-  /**
-   * Name of the Firestore collection where waiver documents are stored.
-   */
-  waiversCollection: string;
-
-  /**
-   * Name of the Firestore collection where volunteer/pilot profiles are stored.
-   */
-  volunteersCollection: string;
-
-  /**
-   * Name of the Firebase Cloud Function that handles public waiver submissions.
-   * This function must validate App Check, store the PDF, and write to Firestore.
-   */
-  submitWaiverFunctionName: string;
-
-  /**
-   * Name of the Firebase Cloud Function that handles volunteer/pilot waiver submissions.
-   * This function must validate the Firebase ID token before accepting submissions.
-   */
-  submitVolunteerWaiverFunctionName: string;
-
-  /**
-   * Record type ID used in the volunteers collection for pilot/volunteer waivers.
-   * Must match the value expected by submitVolunteerWaiverFunctionName.
-   */
-  volunteerWaiverRecordTypeId: string;
 
   /**
    * Primary brand colour (hex). Used throughout the UI and Tailwind theme.
@@ -75,13 +39,7 @@ export interface OrgConfig {
 const orgConfig: OrgConfig = {
   orgName: 'Cycling Without Age Society',
   orgShortName: 'CWAS',
-  staffEmailDomain: 'cyclingwithoutagesociety.org',
-  firestoreDatabase: 'canada',
-  waiversCollection: 'waivers',
-  volunteersCollection: 'volunteers',
-  submitWaiverFunctionName: 'submitWaiverSecure',
-  submitVolunteerWaiverFunctionName: 'submitVolunteerRecord',
-  volunteerWaiverRecordTypeId: 'VOL_WAIV',
+  staffEmailDomain: '',
   brandColor: '#05adee',
   waiverValidityDays: 365,
 };
